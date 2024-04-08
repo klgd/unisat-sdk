@@ -1,0 +1,24 @@
+{
+  "name": "@klgd/unisat-sdk",
+  "version": "1.0.0",
+  "description": "",
+  "main": "./lib/index.js",
+  "module": "./es/index.js",
+  "types": "./lib/index.d.ts",
+  "scripts": {
+    "build": "npm run build:cjs && npm run build:esm",
+    "build:cjs": "rimraf lib && tsc --project tsconfig.json",
+    "build:esm": "rimraf es && tsc --project tsconfig-esm.json"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^20.12.5",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.4.4"
+  },
+  "dependencies": {
+    "@unisat/wallet-sdk": "^1.4.1"
+  }
+}
