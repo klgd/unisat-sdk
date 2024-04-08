@@ -1,14 +1,19 @@
 {
   "name": "@klgd/unisat-sdk",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "",
   "main": "./lib/index.js",
   "module": "./es/index.js",
   "types": "./lib/index.d.ts",
+  "files": [
+    "/es",
+    "/lib"
+  ],
   "scripts": {
     "build": "npm run build:cjs && npm run build:esm",
     "build:cjs": "rimraf lib && tsc --project tsconfig.json",
-    "build:esm": "rimraf es && tsc --project tsconfig-esm.json"
+    "build:esm": "rimraf es && tsc --project tsconfig-esm.json",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [],
   "author": "",
