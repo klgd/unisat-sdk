@@ -1,6 +1,6 @@
 import randomstring from 'randomstring';
 
-import { CHANNEL, OPENAPI_URL_MAINNET, OPENAPI_URL_TESTNET, VERSION } from '../shared/constant';
+import { CHANNEL, VERSION } from '../shared/constant';
 import {
   AddressSummary,
   AddressTokenSummary,
@@ -115,7 +115,15 @@ export class OpenApiService {
     headers.append('x-udid', this.store.deviceId);
     let res: Response;
     try {
-      res = await fetch(new Request(url), { method: 'GET', headers, mode: 'cors', cache: 'default' });
+      const agent = global.agent || null;
+      res = await fetch(new Request(url), { 
+        method: 'GET',
+        headers,
+        // @ts-ignore
+        agent,
+        mode: 'cors',
+        cache: 'default',
+      });
     } catch (e: any) {
       throw new Error('Network error: ' + e && e.message);
     }
@@ -135,9 +143,12 @@ export class OpenApiService {
     headers.append('Content-Type', 'application/json;charset=utf-8');
     let res: Response;
     try {
+      const agent = global.agent || null;
       res = await fetch(new Request(url), {
         method: 'POST',
         headers,
+        // @ts-ignore
+        agent,
         mode: 'cors',
         cache: 'default',
         body: JSON.stringify(params)

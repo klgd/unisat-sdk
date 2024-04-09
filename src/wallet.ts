@@ -3,30 +3,21 @@ import {
 } from './service';
 
 import {
-  ADDRESS_TYPES,
-  AddressFlagType,
-  BRAND_ALIAN_TYPE_TEXT,
-  CHAINS_ENUM,
   COIN_NAME,
   COIN_SYMBOL,
-  KEYRING_TYPE,
-  KEYRING_TYPES,
   NETWORK_TYPES,
   OPENAPI_URL_MAINNET,
   OPENAPI_URL_TESTNET,
   UNCONFIRMED_HEIGHT
 } from './shared/constant';
 import {
-  Account,
   AddressType,
   AddressUserToSignInput,
-  BitcoinBalance,
   NetworkType,
   PublicKeyUserToSignInput,
   SignPsbtOptions,
   ToSignInput,
-  UTXO,
-  WalletKeyring
+  UTXO
 } from './shared/types';
 import { UnspentOutput, txHelpers } from '@unisat/wallet-sdk';
 import { publicKeyToAddress, scriptPkToAddress } from '@unisat/wallet-sdk/lib/address';
