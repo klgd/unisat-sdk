@@ -276,7 +276,7 @@ export const DISCORD_URL = 'https://discord.com/invite/EMskB2sMz8';
 export const TWITTER_URL = 'https://twitter.com/unisat_wallet';
 
 export const CHANNEL = 'store';
-export const VERSION = '1.2.7';
+export const VERSION = '1.2.10';
 export const MANIFEST_VERSION = 'mv3';
 
 export enum AddressFlagType {
