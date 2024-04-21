@@ -33,26 +33,19 @@ import { OpenApiService } from './service/openapi';
 
 import { LocalWallet } from "@unisat/wallet-sdk/lib/wallet";
 
-export type AccountAsset = {
-  name: string;
-  symbol: string;
-  amount: string;
-  value: string;
-};
-
 export class Wallet {
   openapi: OpenApiService = openapiService;
-  wallet: LocalWallet;
+  account: LocalWallet;
   addressType: AddressType;
   networkType: NetworkType;
 
   constructor(WIF: string, addressType: AddressType, networkType: NetworkType) {
     this.addressType = addressType;
     this.networkType = networkType;
-    this.wallet = new LocalWallet(WIF, addressType, networkType);
+    this.account = new LocalWallet(WIF, addressType, networkType);
 
     this.setNetworkType(networkType);
-    openapiService.setClientAddress(this.wallet.address, 0);
+    openapiService.setClientAddress(this.account.address, 0);
   };
 
   getAddressBalance = async (address: string) => {
@@ -105,10 +98,12 @@ export class Wallet {
   }; */
 
   signTransaction = async (psbt: bitcoin.Psbt, inputs: ToSignInput[]) => {
-    return this.wallet.keyring.signTransaction(psbt, inputs);
+    return this.account.keyring.signTransaction(psbt, inputs);
   };
 
   formatOptionsToSignInputs = async (_psbt: string | bitcoin.Psbt, options?: SignPsbtOptions) => {
+    const account = this.getCurrentAccount();
+    if (!account) throw null;
 
     let toSignInputs: ToSignInput[] = [];
     if (options && options.toSignInputs) {
@@ -122,13 +117,13 @@ export class Wallet {
           throw new Error('no address or public key in toSignInput');
         }
 
-        if ((input as AddressUserToSignInput).address && (input as AddressUserToSignInput).address != this.wallet.address) {
+        if ((input as AddressUserToSignInput).address && (input as AddressUserToSignInput).address != account.address) {
           throw new Error('invalid address in toSignInput');
         }
 
         if (
           (input as PublicKeyUserToSignInput).publicKey &&
-          (input as PublicKeyUserToSignInput).publicKey != this.wallet.pubkey
+          (input as PublicKeyUserToSignInput).publicKey != account.pubkey
         ) {
           throw new Error('invalid public key in toSignInput');
         }
@@ -138,7 +133,7 @@ export class Wallet {
 
         return {
           index,
-          publicKey: this.wallet.pubkey,
+          publicKey: account.pubkey,
           sighashTypes,
           disableTweakSigner: input.disableTweakSigner
         };
@@ -166,10 +161,10 @@ export class Wallet {
         const isSigned = v.finalScriptSig || v.finalScriptWitness;
         if (script && !isSigned) {
           const address = scriptPkToAddress(script, networkType);
-          if (this.wallet.address === address) {
+          if (account.address === address) {
             toSignInputs.push({
               index,
-              publicKey: this.wallet.pubkey,
+              publicKey: account.pubkey,
               sighashTypes: v.sighashType ? [v.sighashType] : undefined
             });
           }
@@ -180,6 +175,8 @@ export class Wallet {
   };
 
   signPsbt = async (psbt: bitcoin.Psbt, toSignInputs: ToSignInput[], autoFinalized: boolean) => {
+    const account = this.getCurrentAccount();
+    if (!account) throw new Error('no current account');
 
     const networkType = this.getNetworkType();
     const psbtNetwork = toPsbtNetwork(networkType);
@@ -195,7 +192,7 @@ export class Wallet {
       const lostInternalPubkey = !v.tapInternalKey;
       // Special measures taken for compatibility with certain applications.
       if (isNotSigned && isP2TR && lostInternalPubkey) {
-        const tapInternalKey = toXOnly(Buffer.from(this.wallet.pubkey, 'hex'));
+        const tapInternalKey = toXOnly(Buffer.from(account.pubkey, 'hex'));
         const { output } = bitcoin.payments.p2tr({
           internalPubkey: tapInternalKey,
           network: psbtNetwork
@@ -216,29 +213,27 @@ export class Wallet {
   };
 
   signMessage = async (text: string) => {
-    return this.wallet.keyring.signMessage(this.wallet.pubkey, text);
+    const account = this.getCurrentAccount();
+    if (!account) throw new Error('no current account');
+    return account.keyring.signMessage(account.pubkey, text);
   };
 
   signBIP322Simple = async (text: string) => {
+    const account = this.getCurrentAccount();
+    if (!account) throw new Error('no current account');
     const networkType = this.getNetworkType();
     return signMessageOfBIP322Simple({
       message: text,
-      address: this.wallet.address,
+      address: account.address,
       networkType,
       wallet: this as any
     });
   };
 
   signData = async (data: string, type: "ecdsa" | "schnorr" = 'ecdsa') => {
-    return this.wallet.keyring.signData(this.wallet.pubkey, data, type);
-  };
-
-  listChainAssets = async (pubkeyAddress: string) => {
-    const balance = await openapiService.getAddressBalance(pubkeyAddress);
-    const assets: AccountAsset[] = [
-      { name: COIN_NAME, symbol: COIN_SYMBOL, amount: balance.amount, value: balance.usd_value }
-    ];
-    return assets;
+    const account = this.getCurrentAccount();
+    if (!account) throw new Error('no current account');
+    return account.keyring.signData(account.pubkey, data, type);
   };
 
   reportErrors = (error: string) => {
@@ -262,8 +257,11 @@ export class Wallet {
   };
 
   getBTCUtxos = async () => {
+    // getBTCAccount
+    const account = this.getCurrentAccount();
+    if (!account) throw new Error('no current account');
 
-    let utxos = await openapiService.getBTCUtxos(this.wallet.address);
+    let utxos = await openapiService.getBTCUtxos(account.address);
 
     if (checkAddressFlag(openapiService.addressFlag, AddressFlagType.CONFIRMED_UTXO_MODE)) {
       utxos = utxos.filter((v) => (v as any).height !== UNCONFIRMED_HEIGHT);
@@ -276,7 +274,7 @@ export class Wallet {
         satoshis: v.satoshis,
         scriptPk: v.scriptPk,
         addressType: v.addressType,
-        pubkey: this.wallet.pubkey,
+        pubkey: account.pubkey,
         inscriptions: v.inscriptions,
         atomicals: v.atomicals
       };
@@ -285,7 +283,9 @@ export class Wallet {
   };
 
   getUnavailableUtxos = async () => {
-    const utxos = await openapiService.getUnavailableUtxos(this.wallet.address);
+    const account = this.getCurrentAccount();
+    if (!account) throw new Error('no current account');
+    const utxos = await openapiService.getUnavailableUtxos(account.address);
     const unavailableUtxos = utxos.map((v) => {
       return {
         txid: v.txid,
@@ -293,7 +293,7 @@ export class Wallet {
         satoshis: v.satoshis,
         scriptPk: v.scriptPk,
         addressType: v.addressType,
-        pubkey: this.wallet.pubkey,
+        pubkey: account.pubkey,
         inscriptions: v.inscriptions,
         atomicals: v.atomicals
       };
@@ -302,11 +302,13 @@ export class Wallet {
   };
 
   getAssetUtxosAtomicalsFT = async (ticker: string) => {
-    let arc20_utxos = await openapiService.getArc20Utxos(this.wallet.address, ticker);
+    const account = this.getCurrentAccount();
+    if (!account) throw new Error('no current account');
+    let arc20_utxos = await openapiService.getArc20Utxos(account.address, ticker);
     arc20_utxos = arc20_utxos.filter((v) => (v as any).spent == false);
 
     const assetUtxos = arc20_utxos.map((v) => {
-      return Object.assign(v, { pubkey: this.wallet.pubkey });
+      return Object.assign(v, { pubkey: account.pubkey });
     });
     return assetUtxos;
   };
@@ -328,6 +330,8 @@ export class Wallet {
     memo?: string;
     memos?: string[];
   }) => {
+    const account = this.getCurrentAccount();
+    if (!account) throw new Error('no current account');
 
     const networkType = this.getNetworkType();
 
@@ -343,7 +347,7 @@ export class Wallet {
       btcUtxos: btcUtxos,
       tos: [{ address: to, satoshis: amount }],
       networkType,
-      changeAddress: this.wallet.address,
+      changeAddress: account.address,
       feeRate,
       enableRBF,
       memo,
@@ -367,6 +371,8 @@ export class Wallet {
     enableRBF: boolean;
     btcUtxos?: UnspentOutput[];
   }) => {
+    const account = this.getCurrentAccount();
+    if (!account) throw new Error('no current account');
 
     const networkType = this.getNetworkType();
 
@@ -407,6 +413,8 @@ export class Wallet {
     enableRBF: boolean;
     btcUtxos?: UnspentOutput[];
   }) => {
+    const account = this.getCurrentAccount();
+    if (!account) throw new Error('no current account');
 
     const networkType = this.getNetworkType();
 
@@ -419,7 +427,7 @@ export class Wallet {
     //   throw new Error('Multiple inscriptions are mixed together. Please split them first.');
     // }
 
-    const assetUtxo = Object.assign(utxo, { pubkey: this.wallet.pubkey });
+    const assetUtxo = Object.assign(utxo, { pubkey: account.pubkey });
 
     if (!btcUtxos) {
       btcUtxos = await this.getBTCUtxos();
@@ -434,7 +442,7 @@ export class Wallet {
       btcUtxos,
       toAddress: to,
       networkType,
-      changeAddress: this.wallet.address,
+      changeAddress: account.address,
       feeRate,
       outputValue: outputValue || assetUtxo.satoshis,
       enableRBF,
@@ -461,6 +469,8 @@ export class Wallet {
     enableRBF: boolean;
     btcUtxos?: UnspentOutput[];
   }) => {
+    const account = this.getCurrentAccount();
+    if (!account) throw new Error('no current account');
 
     const networkType = this.getNetworkType();
 
@@ -474,7 +484,7 @@ export class Wallet {
     }
 
     const assetUtxos = inscription_utxos.map((v) => {
-      return Object.assign(v, { pubkey: this.wallet.pubkey });
+      return Object.assign(v, { pubkey: account.pubkey });
     });
 
     const toDust = getAddressUtxoDust(to);
@@ -498,7 +508,7 @@ export class Wallet {
       btcUtxos,
       toAddress: to,
       networkType,
-      changeAddress: this.wallet.address,
+      changeAddress: account.address,
       feeRate,
       enableRBF
     });
@@ -524,6 +534,8 @@ export class Wallet {
     enableRBF: boolean;
     btcUtxos?: UnspentOutput[];
   }) => {
+    const account = this.getCurrentAccount();
+    if (!account) throw new Error('no current account');
 
     const networkType = this.getNetworkType();
 
@@ -532,7 +544,7 @@ export class Wallet {
       throw new Error('UTXO not found.');
     }
 
-    const assetUtxo = Object.assign(utxo, { pubkey: this.wallet.pubkey });
+    const assetUtxo = Object.assign(utxo, { pubkey: account.pubkey });
 
     if (!btcUtxos) {
       btcUtxos = await this.getBTCUtxos();
@@ -542,7 +554,7 @@ export class Wallet {
       assetUtxo,
       btcUtxos,
       networkType,
-      changeAddress: this.wallet.address,
+      changeAddress: account.address,
       feeRate,
       enableRBF,
       outputValue
@@ -560,6 +572,10 @@ export class Wallet {
   pushTx = async (rawtx: string) => {
     const txid = await this.openapi.pushTx(rawtx);
     return txid;
+  };
+
+  getCurrentAccount = () => {
+    return this.account;
   };
 
   queryDomainInfo = async (domain: string) => {
@@ -749,6 +765,8 @@ export class Wallet {
     enableRBF: boolean;
     btcUtxos?: UnspentOutput[];
   }) => {
+    const account = this.getCurrentAccount();
+    if (!account) throw new Error('no current account');
 
     const networkType = this.getNetworkType();
 
@@ -761,7 +779,7 @@ export class Wallet {
       throw new Error('Multiple inscriptions are mixed together. Please split them first.');
     }
 
-    const assetUtxo = Object.assign(utxo, { pubkey: this.wallet.pubkey });
+    const assetUtxo = Object.assign(utxo, { pubkey: account.pubkey });
 
     if (!btcUtxos) {
       btcUtxos = await this.getBTCUtxos();
@@ -776,7 +794,7 @@ export class Wallet {
       btcUtxos,
       toAddress: to,
       networkType,
-      changeAddress: this.wallet.address,
+      changeAddress: account.address,
       feeRate,
       enableRBF
     });
@@ -804,6 +822,8 @@ export class Wallet {
     btcUtxos?: UnspentOutput[];
     assetUtxos?: UnspentOutput[];
   }) => {
+    const account = this.getCurrentAccount();
+    if (!account) throw new Error('no current account');
 
     const networkType = this.getNetworkType();
 
@@ -815,7 +835,7 @@ export class Wallet {
       btcUtxos = await this.getBTCUtxos();
     }
 
-    const changeDust = getAddressUtxoDust(this.wallet.address);
+    const changeDust = getAddressUtxoDust(account.address);
 
     const _assetUtxos: UnspentOutput[] = [];
     let total = 0;
@@ -841,8 +861,8 @@ export class Wallet {
       btcUtxos,
       toAddress: to,
       networkType,
-      changeAddress: this.wallet.address,
-      changeAssetAddress: this.wallet.address,
+      changeAddress: account.address,
+      changeAssetAddress: account.address,
       feeRate,
       enableRBF,
       sendAmount: amount
@@ -885,10 +905,12 @@ export class Wallet {
   };
 
   getAssetUtxosRunes = async (runeid: string) => {
-    const runes_utxos = await openapiService.getRunesUtxos(this.wallet.address, runeid);
+    const account = this.getCurrentAccount();
+    if (!account) throw new Error('no current account');
+    const runes_utxos = await openapiService.getRunesUtxos(account.address, runeid);
 
     const assetUtxos = runes_utxos.map((v) => {
-      return Object.assign(v, { pubkey: this.wallet.pubkey });
+      return Object.assign(v, { pubkey: account.pubkey });
     });
 
     assetUtxos.forEach((v) => {
@@ -922,6 +944,8 @@ export class Wallet {
     assetUtxos?: UnspentOutput[];
     outputValue: number;
   }) => {
+    const account = this.getCurrentAccount();
+    if (!account) throw new Error('no current account');
 
     const networkType = this.getNetworkType();
 
@@ -951,9 +975,9 @@ export class Wallet {
 
     const { psbt, toSignInputs } = await txHelpers.sendRunes({
       assetUtxos,
-      assetAddress: this.wallet.address,
+      assetAddress: account.address,
       btcUtxos,
-      btcAddress: this.wallet.address,
+      btcAddress: account.address,
       toAddress: to,
       networkType,
       feeRate,
