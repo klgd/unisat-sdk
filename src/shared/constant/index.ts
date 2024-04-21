@@ -280,7 +280,9 @@ export const VERSION = '1.2.10';
 export const MANIFEST_VERSION = 'mv3';
 
 export enum AddressFlagType {
-  Is_Enable_Atomicals = 0b1
+  Is_Enable_Atomicals = 0b1,
+  CONFIRMED_UTXO_MODE = 0b10,
+  DISABLE_AUTO_SWITCH_CONFIRMED = 0b100
 }
 
 export const UNCONFIRMED_HEIGHT = 4194303;

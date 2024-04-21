@@ -2,6 +2,7 @@ import randomstring from 'randomstring';
 
 import { CHANNEL, VERSION } from '../shared/constant';
 import {
+  AddressRunesTokenSummary,
   AddressSummary,
   AddressTokenSummary,
   AppSummary,
@@ -13,6 +14,7 @@ import {
   Inscription,
   InscriptionSummary,
   NetworkType,
+  RuneBalance,
   TokenBalance,
   TokenTransfer,
   UTXO,
@@ -304,8 +306,8 @@ export class OpenApiService {
     });
   }
 
-  async decodePsbt(psbtHex: string): Promise<DecodedPsbt> {
-    return this.httpPost('/tx/decode2', { psbtHex });
+  async decodePsbt(psbtHex: string, website: string): Promise<DecodedPsbt> {
+    return this.httpPost('/tx/decode2', { psbtHex, website });
   }
 
   async createMoonpayUrl(address: string): Promise<string> {
@@ -365,6 +367,21 @@ export class OpenApiService {
     return this.httpGet('/version/detail', {
       version
     });
+  }
+
+  async getRunesList(address: string, cursor: number, size: number): Promise<{ list: RuneBalance[]; total: number }> {
+    return this.httpGet('/runes/list', { address, cursor, size });
+  }
+
+  async getRunesUtxos(address: string, runeid: string): Promise<UTXO[]> {
+    return this.httpGet('/runes/utxos', {
+      address,
+      runeid
+    });
+  }
+
+  async getAddressRunesTokenSummary(address: string, runeid: string): Promise<AddressRunesTokenSummary> {
+    return this.httpGet(`/runes/token-summary?address=${address}&runeid=${runeid}`, {});
   }
 }
 

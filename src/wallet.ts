@@ -3,6 +3,7 @@ import {
 } from './service';
 
 import {
+  AddressFlagType,
   COIN_NAME,
   COIN_SYMBOL,
   NETWORK_TYPES,
@@ -19,6 +20,7 @@ import {
   ToSignInput,
   UTXO
 } from './shared/types';
+import { checkAddressFlag } from './shared/utils';
 import { UnspentOutput, txHelpers } from '@unisat/wallet-sdk';
 import { publicKeyToAddress, scriptPkToAddress } from '@unisat/wallet-sdk/lib/address';
 import { ECPair, bitcoin } from '@unisat/wallet-sdk/lib/bitcoin-core';
@@ -26,10 +28,10 @@ import { signMessageOfBIP322Simple } from '@unisat/wallet-sdk/lib/message';
 import { toPsbtNetwork } from '@unisat/wallet-sdk/lib/network';
 import { getAddressUtxoDust } from '@unisat/wallet-sdk/lib/transaction';
 import { toXOnly } from '@unisat/wallet-sdk/lib/utils';
-import { LocalWallet } from "@unisat/wallet-sdk/lib/wallet";
 
 import { OpenApiService } from './service/openapi';
 
+import { LocalWallet } from "@unisat/wallet-sdk/lib/wallet";
 
 export type AccountAsset = {
   name: string;
@@ -263,7 +265,7 @@ export class Wallet {
 
     let utxos = await openapiService.getBTCUtxos(this.wallet.address);
 
-    if (openapiService.addressFlag == 1) {
+    if (checkAddressFlag(openapiService.addressFlag, AddressFlagType.CONFIRMED_UTXO_MODE)) {
       utxos = utxos.filter((v) => (v as any).height !== UNCONFIRMED_HEIGHT);
     }
 
@@ -593,8 +595,8 @@ export class Wallet {
     return openapiService.getInscribeResult(orderId);
   };
 
-  decodePsbt = (psbtHex: string) => {
-    return openapiService.decodePsbt(psbtHex);
+  decodePsbt = (psbtHex: string, website: string) => {
+    return openapiService.decodePsbt(psbtHex, website);
   };
 
   getBRC20List = async (address: string, currentPage: number, pageSize: number) => {
@@ -867,5 +869,104 @@ export class Wallet {
 
   getVersionDetail = (version: string) => {
     return openapiService.getVersionDetail(version);
+  };
+
+  getRunesList = async (address: string, currentPage: number, pageSize: number) => {
+    const cursor = (currentPage - 1) * pageSize;
+    const size = pageSize;
+    const { total, list } = await openapiService.getRunesList(address, cursor, size);
+
+    return {
+      currentPage,
+      pageSize,
+      total,
+      list
+    };
+  };
+
+  getAssetUtxosRunes = async (runeid: string) => {
+    const runes_utxos = await openapiService.getRunesUtxos(this.wallet.address, runeid);
+
+    const assetUtxos = runes_utxos.map((v) => {
+      return Object.assign(v, { pubkey: this.wallet.pubkey });
+    });
+
+    assetUtxos.forEach((v) => {
+      v.inscriptions = [];
+      v.atomicals = [];
+    });
+    return assetUtxos;
+  };
+
+  getAddressRunesTokenSummary = async (address: string, runeid: string) => {
+    const tokenSummary = await openapiService.getAddressRunesTokenSummary(address, runeid);
+    return tokenSummary;
+  };
+
+  sendRunes = async ({
+    to,
+    runeid,
+    runeAmount,
+    feeRate,
+    enableRBF,
+    btcUtxos,
+    assetUtxos,
+    outputValue
+  }: {
+    to: string;
+    runeid: string;
+    runeAmount: string;
+    feeRate: number;
+    enableRBF: boolean;
+    btcUtxos?: UnspentOutput[];
+    assetUtxos?: UnspentOutput[];
+    outputValue: number;
+  }) => {
+
+    const networkType = this.getNetworkType();
+
+    if (!assetUtxos) {
+      assetUtxos = await this.getAssetUtxosRunes(runeid);
+    }
+
+    const _assetUtxos: UnspentOutput[] = [];
+    let total = BigInt(0);
+    for (let i = 0; i < assetUtxos.length; i++) {
+      const v = assetUtxos[i];
+      v.runes?.forEach((r) => {
+        if (r.runeid == runeid) {
+          total = total + BigInt(r.amount);
+        }
+      });
+      _assetUtxos.push(v);
+      if (total >= BigInt(runeAmount)) {
+        break;
+      }
+    }
+    assetUtxos = _assetUtxos;
+
+    if (!btcUtxos) {
+      btcUtxos = await this.getBTCUtxos();
+    }
+
+    const { psbt, toSignInputs } = await txHelpers.sendRunes({
+      assetUtxos,
+      assetAddress: this.wallet.address,
+      btcUtxos,
+      btcAddress: this.wallet.address,
+      toAddress: to,
+      networkType,
+      feeRate,
+      enableRBF,
+      runeid,
+      runeAmount,
+      outputValue
+    });
+
+    this.setPsbtSignNonSegwitEnable(psbt, true);
+    await this.signPsbt(psbt, toSignInputs, true);
+    this.setPsbtSignNonSegwitEnable(psbt, false);
+
+    return psbt.toHex();
   };
 }
