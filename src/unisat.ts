@@ -1,6 +1,6 @@
 import { Wallet } from './wallet';
 import { AddressType, NetworkType } from './shared/types';
-import { createHash } from 'create-hash';
+import { createHash } from 'crypto';
 // import { bitcoin } from '@unisat/wallet-sdk/lib/bitcoin-core';
 // import { satoshisToAmount } from '@unisat/wallet-sdk/lib/utils';
 import { utils as uniutils, core as unicore } from '@unisat/wallet-sdk';

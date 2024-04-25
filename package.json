@@ -1,6 +1,6 @@
 {
   "name": "@klgd/unisat-sdk",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "description": "",
   "main": "./lib/index.js",
   "module": "./es/index.js",
@@ -25,7 +25,6 @@
   },
   "dependencies": {
     "@unisat/wallet-sdk": "1.6",
-    "create-hash": "^1.2.0",
     "randomstring": "^1.3.0"
   }
 }
