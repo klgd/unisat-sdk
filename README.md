@@ -48,3 +48,8 @@ const { HttpsProxyAgent } = require("https-proxy-agent")
 global.agent = new HttpsProxyAgent('代理地址');
 
 ```
+
+## 浏览器端使用
+
+```
+```

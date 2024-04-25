@@ -20,29 +20,38 @@ import {
   ToSignInput,
   UTXO
 } from './shared/types';
-import { checkAddressFlag } from './shared/utils';
-import { UnspentOutput, txHelpers } from '@unisat/wallet-sdk';
-import { publicKeyToAddress, scriptPkToAddress } from '@unisat/wallet-sdk/lib/address';
-import { ECPair, bitcoin } from '@unisat/wallet-sdk/lib/bitcoin-core';
-import { signMessageOfBIP322Simple } from '@unisat/wallet-sdk/lib/message';
-import { toPsbtNetwork } from '@unisat/wallet-sdk/lib/network';
-import { getAddressUtxoDust } from '@unisat/wallet-sdk/lib/transaction';
-import { toXOnly } from '@unisat/wallet-sdk/lib/utils';
+import { checkAddressFlag, toPsbtNetwork } from './shared/utils';
+// import { UnspentOutput, txHelpers } from '@unisat/wallet-sdk';
+// import { publicKeyToAddress, scriptPkToAddress } from '@unisat/wallet-sdk/lib/address';
+// import { ECPair, bitcoin } from '@unisat/wallet-sdk/lib/bitcoin-core';
+// import { signMessageOfBIP322Simple } from '@unisat/wallet-sdk/lib/message';
+// import { toPsbtNetwork } from '@unisat/wallet-sdk/lib/network';
+// import { getAddressUtxoDust } from '@unisat/wallet-sdk/lib/transaction';
+// import { toXOnly } from '@unisat/wallet-sdk/lib/utils';
+
+import {
+  UnspentOutput,
+  txHelpers,
+  address as uniaddress,
+  utils as uniutils,
+  transaction as unitransaction,
+  core as unicore,
+  message as unimessage,
+  wallet as uniwallet,
+} from '@unisat/wallet-sdk';
 
 import { OpenApiService } from './service/openapi';
 
-import { LocalWallet } from "@unisat/wallet-sdk/lib/wallet";
-
 export class Wallet {
   openapi: OpenApiService = openapiService;
-  account: LocalWallet;
+  account: uniwallet.LocalWallet;
   addressType: AddressType;
   networkType: NetworkType;
 
   constructor(WIF: string, addressType: AddressType, networkType: NetworkType) {
     this.addressType = addressType;
     this.networkType = networkType;
-    this.account = new LocalWallet(WIF, addressType, networkType);
+    this.account = new uniwallet.LocalWallet(WIF, addressType, networkType);
 
     this.setNetworkType(networkType);
     openapiService.setClientAddress(this.account.address, 0);
@@ -97,11 +106,11 @@ export class Wallet {
     return addresses;
   }; */
 
-  signTransaction = async (psbt: bitcoin.Psbt, inputs: ToSignInput[]) => {
+  signTransaction = async (psbt: unicore.bitcoin.Psbt, inputs: ToSignInput[]) => {
     return this.account.keyring.signTransaction(psbt, inputs);
   };
 
-  formatOptionsToSignInputs = async (_psbt: string | bitcoin.Psbt, options?: SignPsbtOptions) => {
+  formatOptionsToSignInputs = async (_psbt: string | unicore.bitcoin.Psbt, options?: SignPsbtOptions) => {
     const account = this.getCurrentAccount();
     if (!account) throw null;
 
@@ -144,8 +153,8 @@ export class Wallet {
 
       const psbt =
         typeof _psbt === 'string'
-          ? bitcoin.Psbt.fromHex(_psbt as string, { network: psbtNetwork })
-          : (_psbt as bitcoin.Psbt);
+          ? unicore.bitcoin.Psbt.fromHex(_psbt as string, { network: psbtNetwork })
+          : (_psbt as unicore.bitcoin.Psbt);
       psbt.data.inputs.forEach((v, index) => {
         let script: any = null;
         let value = 0;
@@ -153,14 +162,14 @@ export class Wallet {
           script = v.witnessUtxo.script;
           value = v.witnessUtxo.value;
         } else if (v.nonWitnessUtxo) {
-          const tx = bitcoin.Transaction.fromBuffer(v.nonWitnessUtxo);
+          const tx = unicore.bitcoin.Transaction.fromBuffer(v.nonWitnessUtxo);
           const output = tx.outs[psbt.txInputs[index].index];
           script = output.script;
           value = output.value;
         }
         const isSigned = v.finalScriptSig || v.finalScriptWitness;
         if (script && !isSigned) {
-          const address = scriptPkToAddress(script, networkType);
+          const address = uniaddress.scriptPkToAddress(script, networkType);
           if (account.address === address) {
             toSignInputs.push({
               index,
@@ -174,7 +183,7 @@ export class Wallet {
     return toSignInputs;
   };
 
-  signPsbt = async (psbt: bitcoin.Psbt, toSignInputs: ToSignInput[], autoFinalized: boolean) => {
+  signPsbt = async (psbt: unicore.bitcoin.Psbt, toSignInputs: ToSignInput[], autoFinalized: boolean) => {
     const account = this.getCurrentAccount();
     if (!account) throw new Error('no current account');
 
@@ -192,8 +201,8 @@ export class Wallet {
       const lostInternalPubkey = !v.tapInternalKey;
       // Special measures taken for compatibility with certain applications.
       if (isNotSigned && isP2TR && lostInternalPubkey) {
-        const tapInternalKey = toXOnly(Buffer.from(account.pubkey, 'hex'));
-        const { output } = bitcoin.payments.p2tr({
+        const tapInternalKey = uniutils.toXOnly(Buffer.from(account.pubkey, 'hex'));
+        const { output } = unicore.bitcoin.payments.p2tr({
           internalPubkey: tapInternalKey,
           network: psbtNetwork
         });
@@ -222,7 +231,7 @@ export class Wallet {
     const account = this.getCurrentAccount();
     if (!account) throw new Error('no current account');
     const networkType = this.getNetworkType();
-    return signMessageOfBIP322Simple({
+    return unimessage.signMessageOfBIP322Simple({
       message: text,
       address: account.address,
       networkType,
@@ -487,7 +496,7 @@ export class Wallet {
       return Object.assign(v, { pubkey: account.pubkey });
     });
 
-    const toDust = getAddressUtxoDust(to);
+    const toDust = unitransaction.getAddressUtxoDust(to);
 
     assetUtxos.forEach((v) => {
       if (v.satoshis < toDust) {
@@ -835,7 +844,7 @@ export class Wallet {
       btcUtxos = await this.getBTCUtxos();
     }
 
-    const changeDust = getAddressUtxoDust(account.address);
+    const changeDust = unitransaction.getAddressUtxoDust(account.address);
 
     const _assetUtxos: UnspentOutput[] = [];
     let total = 0;
@@ -881,7 +890,7 @@ export class Wallet {
     return data;
   };
 
-  setPsbtSignNonSegwitEnable(psbt: bitcoin.Psbt, enabled: boolean) {
+  setPsbtSignNonSegwitEnable(psbt: unicore.bitcoin.Psbt, enabled: boolean) {
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     //@ts-ignore
     psbt.__CACHE.__UNSAFE_SIGN_NONSEGWIT = enabled;

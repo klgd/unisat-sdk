@@ -1,7 +1,13 @@
+import { NetworkType } from '../types';
+import {
+  core as unicore,
+} from '@unisat/wallet-sdk';
+
 // import { keyBy } from 'lodash';
 
 // import browser from '@/background/webapi/browser';
 import { AddressFlagType, CHAINS } from '../constant';
+
 
 // import BroadcastChannelMessage from './message/broadcastChannelMessage';
 // import PortMessage from './message/portMessage';
@@ -36,3 +42,13 @@ import { AddressFlagType, CHAINS } from '../constant';
 export const checkAddressFlag = (currentFlag: number, flag: AddressFlagType): boolean => {
   return Boolean(currentFlag & flag);
 };
+
+export function toPsbtNetwork(networkType: NetworkType) {
+  if (networkType === NetworkType.MAINNET) {
+    return unicore.bitcoin.networks.bitcoin;
+  } else if (networkType === NetworkType.TESTNET) {
+    return unicore.bitcoin.networks.testnet;
+  } else {
+    return unicore.bitcoin.networks.regtest;
+  }
+}

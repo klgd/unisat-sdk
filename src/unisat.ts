@@ -1,8 +1,9 @@
 import { Wallet } from './wallet';
 import { AddressType, NetworkType } from './shared/types';
 import { createHash } from 'crypto';
-import { bitcoin } from '@unisat/wallet-sdk/lib/bitcoin-core';
-import { satoshisToAmount } from '@unisat/wallet-sdk/lib/utils';
+// import { bitcoin } from '@unisat/wallet-sdk/lib/bitcoin-core';
+// import { satoshisToAmount } from '@unisat/wallet-sdk/lib/utils';
+import { utils as uniutils, core as unicore } from '@unisat/wallet-sdk';
 
 const API_BASE_URL = {
   [NetworkType.MAINNET]: 'https://api.unisat.io',
@@ -33,7 +34,11 @@ export class UniSat {
     this.wallet = new Wallet(wif, addressType, networkType);
     this.address = this.wallet.getCurrentAccount().address;
 
-    this.baseUrl = API_BASE_URL[networkType];
+    this.setBaseUrl(API_BASE_URL[networkType]);
+  }
+
+  setBaseUrl(url: string) {
+    this.baseUrl = url;
   }
 
   setMaxFeeRate(val: number) {
@@ -131,7 +136,7 @@ export class UniSat {
 
     const order = await this.createBid(nftType, auctionId, bidPrice, feeRate);
     if (order) {
-      const psbt = bitcoin.Psbt.fromHex(order.psbtBid);
+      const psbt = unicore.bitcoin.Psbt.fromHex(order.psbtBid);
       const psbtSign = await this.wallet.signPsbt(psbt, null, true);
       const txid = await this.confirmBid(nftType, auctionId, order.bidId, psbtSign.toHex());
       return txid;
@@ -502,9 +507,9 @@ export class UniSat {
     const safeBalance = _utxos.filter((v) => v.inscriptions.length == 0).reduce((pre, cur) => pre + cur.satoshis, 0);
     if (safeBalance < toAmount) {
       throw new Error(
-        `Insufficient balance. Non-Inscription balance(${satoshisToAmount(
+        `Insufficient balance. Non-Inscription balance(${uniutils.satoshisToAmount(
           safeBalance
-        )} BTC) is lower than ${satoshisToAmount(toAmount)} BTC `
+        )} BTC) is lower than ${uniutils.satoshisToAmount(toAmount)} BTC `
       );
     }
 
@@ -537,7 +542,7 @@ export class UniSat {
       });
     }
 
-    const psbt = bitcoin.Psbt.fromHex(psbtHex);
+    const psbt = unicore.bitcoin.Psbt.fromHex(psbtHex);
     const rawtx = psbt.extractTransaction().toHex();
     
     const txid = await this.wallet.pushTx(rawtx);
