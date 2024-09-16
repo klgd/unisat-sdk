@@ -1,4 +1,4 @@
-import { CHAINS_ENUM } from './constant';
+import { CHAINS_ENUM, PaymentChannelType } from './constant';
 
 export enum AddressType {
   P2PKH,
@@ -48,13 +48,27 @@ export interface AddressAssets {
   total_inscription: number;
 }
 
+export interface TxHistoryInOutItem {
+  address: string;
+  value: number;
+  inscriptions: { inscriptionId: string }[];
+  runes: { spacedRune: string; symbol: string; divisibility: number; amount: string }[];
+  brc20: { ticker: string; amount: string }[];
+}
+
 export interface TxHistoryItem {
   txid: string;
-  time: number;
-  date: string;
-  amount: string;
-  symbol: string;
-  address: string;
+  confirmations: number;
+  height: number;
+  timestamp: number;
+  size: number;
+  feeRate: number;
+  fee: number;
+  outputValue: number;
+  vin: TxHistoryInOutItem[];
+  vout: TxHistoryInOutItem[];
+  types: string[];
+  methods: string[];
 }
 
 export interface Inscription {
@@ -88,6 +102,7 @@ export interface Atomical {
   atomicalNumber: number;
   type: 'FT' | 'NFT';
   ticker?: string;
+  atomicalValue: number;
 
   // mint info
   address: string;
@@ -142,6 +157,11 @@ export interface FeeSummary {
   }[];
 }
 
+export interface BtcPrice {
+  price: number;
+  updateTime: number;
+}
+
 export interface UTXO {
   txid: string;
   vout: number;
@@ -158,6 +178,7 @@ export interface UTXO {
     atomicalNumber: number;
     type: 'NFT' | 'FT';
     ticker?: string;
+    atomicalValue?: number;
   }[];
 
   runes: {
@@ -180,7 +201,8 @@ export enum TxType {
   SIGN_TX,
   SEND_BITCOIN,
   SEND_ORDINALS_INSCRIPTION,
-  SEND_ATOMICALS_INSCRIPTION
+  SEND_ATOMICALS_INSCRIPTION,
+  SEND_RUNES
 }
 
 interface BaseUserToSignInput {
@@ -209,6 +231,7 @@ export interface ToSignInput {
   publicKey: string;
   sighashTypes?: number[];
 }
+
 export type WalletKeyring = {
   key: string;
   index: number;
@@ -249,6 +272,7 @@ export interface TokenBalance {
   transferableBalance: string;
   availableBalanceSafe: string;
   availableBalanceUnSafe: string;
+  selfMint: boolean;
 }
 
 export interface Arc20Balance {
@@ -264,18 +288,22 @@ export interface TokenInfo {
   decimal: number;
   holder: string;
   inscriptionId: string;
+  selfMint?: boolean;
 }
 
 export enum TokenInscriptionType {
   INSCRIBE_TRANSFER,
   INSCRIBE_MINT
 }
+
 export interface TokenTransfer {
   ticker: string;
   amount: string;
   inscriptionId: string;
   inscriptionNumber: number;
   timestamp: number;
+  confirmations: number;
+  satoshi: number;
 }
 
 export interface AddressTokenSummary {
@@ -304,7 +332,7 @@ export enum RiskType {
 
 export interface Risk {
   type: RiskType;
-  level: 'danger' | 'warning';
+  level: 'danger' | 'warning' | 'critical';
   title: string;
   desc: string;
 }
@@ -356,6 +384,8 @@ export interface WalletConfig {
   version: string;
   moonPayEnabled: boolean;
   statusMessage: string;
+  endpoint: string;
+  chainTip: string;
 }
 
 export enum WebsiteState {
@@ -421,9 +451,23 @@ export interface RuneInfo {
   remaining: string;
   start: number;
   end: number;
+  supply: string;
+  parent?: string;
 }
 
 export interface AddressRunesTokenSummary {
   runeInfo: RuneInfo;
   runeBalance: RuneBalance;
+  runeLogo?: Inscription;
 }
+
+export interface BtcChannelItem {
+  channel: PaymentChannelType;
+  quote: number;
+  payType: string[];
+}
+
+export type TickPriceItem = {
+  curPrice: number;
+  changePercent: number;
+};

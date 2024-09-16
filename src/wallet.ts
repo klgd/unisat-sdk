@@ -4,11 +4,12 @@ import {
 
 import {
   AddressFlagType,
+  CHAINS_MAP,
   COIN_NAME,
   COIN_SYMBOL,
+  ChainType,
   NETWORK_TYPES,
-  OPENAPI_URL_MAINNET,
-  OPENAPI_URL_TESTNET,
+  TypeChain,
   UNCONFIRMED_HEIGHT
 } from './shared/constant';
 import {
@@ -46,14 +47,19 @@ export class Wallet {
   openapi: OpenApiService = openapiService;
   account: uniwallet.LocalWallet;
   addressType: AddressType;
-  networkType: NetworkType;
+  // networkType: NetworkType;
+  chainType: ChainType;
+  chain: TypeChain;
 
-  constructor(WIF: string, addressType: AddressType, networkType: NetworkType) {
+  constructor(WIF: string, addressType: AddressType, chainType: ChainType) {
     this.addressType = addressType;
-    this.networkType = networkType;
-    this.account = new uniwallet.LocalWallet(WIF, addressType, networkType);
+    // this.networkType = networkType;
+    this.chain = CHAINS_MAP[chainType];
+    this.account = new uniwallet.LocalWallet(WIF, addressType, this.chain.networkType);
 
-    this.setNetworkType(networkType);
+    // this.setNetworkType(networkType);
+    this.openapi.setEndpoints(this.chain.endpoints);
+
     openapiService.setClientAddress(this.account.address, 0);
   };
 
@@ -250,19 +256,27 @@ export class Wallet {
   };
 
   getNetworkType = () => {
-    return this.networkType;
+    return this.chain.networkType;
   };
 
-  setNetworkType = async (networkType: NetworkType) => {
-    if (networkType === NetworkType.MAINNET) {
-      this.openapi.setHost(OPENAPI_URL_MAINNET);
-    } else {
-      this.openapi.setHost(OPENAPI_URL_TESTNET);
-    }
-  };
+  // setNetworkType = async (networkType: NetworkType) => {
+  //   if (networkType === NetworkType.MAINNET) {
+  //     this.openapi.setHost(OPENAPI_URL_MAINNET);
+  //   } else {
+  //     this.openapi.setHost(OPENAPI_URL_TESTNET);
+  //   }
+  // };
 
-  getNetworkName = () => {
-    return NETWORK_TYPES[this.networkType].name;
+  // getNetworkName = () => {
+  //   return NETWORK_TYPES[this.networkType].name;
+  // };
+
+  // setChainType = async (chainType: ChainType) => {
+  //   this.openapi.setEndpoints(CHAINS_MAP[chainType].endpoints);
+  // };
+
+  getChainType = () => {
+    return this.chainType;
   };
 
   getBTCUtxos = async () => {
@@ -350,6 +364,10 @@ export class Wallet {
 
     if (btcUtxos.length == 0) {
       throw new Error('Insufficient balance.');
+    }
+
+    if (!uniaddress.isValidAddress(to, networkType)) {
+      throw new Error('Invalid address.');
     }
 
     const { psbt, toSignInputs } = await txHelpers.sendBTC({

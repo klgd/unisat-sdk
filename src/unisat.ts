@@ -1,13 +1,16 @@
 import { Wallet } from './wallet';
-import { AddressType, NetworkType } from './shared/types';
+import { AddressType } from './shared/types';
 import { createHash } from 'crypto';
 // import { bitcoin } from '@unisat/wallet-sdk/lib/bitcoin-core';
 // import { satoshisToAmount } from '@unisat/wallet-sdk/lib/utils';
 import { utils as uniutils, core as unicore } from '@unisat/wallet-sdk';
+import { ChainType } from './shared/constant';
 
 const API_BASE_URL = {
-  [NetworkType.MAINNET]: 'https://api.unisat.io',
-  [NetworkType.TESTNET]: 'https://api-testnet.unisat.io',
+  [ChainType.BITCOIN_MAINNET]: 'https://api.unisat.io',
+  [ChainType.BITCOIN_TESTNET]: 'https://api-testnet.unisat.io',
+  [ChainType.FRACTAL_BITCOIN_MAINNET]: 'https://fractal-api.unisat.io',
+  [ChainType.FRACTAL_BITCOIN_TESTNET]: 'https://fractal-api-testnet.unisat.io',
 };
 
 interface FileInfo {
@@ -21,20 +24,14 @@ export enum ExactType {
 }
 
 export class UniSat {
-  wallet: Wallet;
-  baseUrl: string;
-  address: string;
+  wallet: Wallet | undefined;
+  baseUrl: string = API_BASE_URL[ChainType.BITCOIN_MAINNET];
+  address: string | undefined;
   maxFeeRate: number = 50;
 
-  constructor(
-    wif: string,
-    addressType: AddressType = AddressType.P2TR,
-    networkType: NetworkType = NetworkType.MAINNET,
-  ) {
-    this.wallet = new Wallet(wif, addressType, networkType);
-    this.address = this.wallet.getCurrentAccount().address;
-
-    this.setBaseUrl(API_BASE_URL[networkType]);
+  constructor(wallet: Wallet, baseUrl: string) {
+    this.setWallet(wallet);
+    this.setBaseUrl(baseUrl);
   }
 
   setBaseUrl(url: string) {
@@ -45,6 +42,14 @@ export class UniSat {
     this.maxFeeRate = val;
   }
 
+  changeWalletFromWIF(
+    wif: string,
+    addressType: AddressType = AddressType.P2TR,
+    chainType: ChainType = ChainType.BITCOIN_MAINNET,
+  ) {
+    this.setWallet(new Wallet(wif, addressType, chainType));
+  }
+
   // async swapIn(tick0: string, tick1: string, amount: string, slippage: string) {
   //   return this.swap(tick0, tick1, amount, slippage, ExactType.exactIn);
 
@@ -53,20 +58,37 @@ export class UniSat {
   //   return this.swap(tick0, tick1, amount, slippage, ExactType.exactOut);
   // }
 
+  setWallet(wallet: Wallet) {
+    this.wallet = wallet;
+    this.address = wallet.getCurrentAccount().address;
+  }
+
+  getWallet() {
+    if (!this.wallet) {
+      throw new Error('no current wallet');
+    }
+
+    return this.wallet;
+  }
+
+  async runesAuctionList(tick: string, start: number = 0, limit: number = 20) {
+    return this.auctionList('runes', tick, start, limit);
+  }
+
   async auctionList(nftType: string, tick: string, start: number = 0, limit: number = 20) {
     const body = JSON.stringify({
-      filter:{
+      filter: {
         nftType,
         nftConfirm: true,
         isEnd: false,
-        tick
+        tick,
       },
       sort: {
-        unitPrice: 1
+        unitPrice: 1,
       },
       start,
       limit,
-      flash: true
+      flash: true,
     });
 
     // console.log(body)
@@ -78,9 +100,9 @@ export class UniSat {
     return res;
   }
 
-  async mintRune(runeId: string, count: number, feeRate: number, receiver: string = this.address) {
+  async mintRune(runeId: string, count: number, feeRate: number, receiver: string) {
     if (!feeRate) {
-      const summary = await this.wallet.getFeeSummary();
+      const summary = await this.getWallet().getFeeSummary();
       // console.log(summary)
       feeRate = summary.list[1].feeRate;
       if (feeRate > this.maxFeeRate) {
@@ -94,7 +116,7 @@ export class UniSat {
         toAddress: order.payAddress,
         toAmount: order.amount,
         feeRate: order.feeRate,
-        enableRBF: false
+        enableRBF: false,
       });
       console.log(txId);
       return txId;
@@ -103,7 +125,7 @@ export class UniSat {
     return false;
   }
 
-  async createRunesMintOrder(runeId: string, count: number, feeRate: number, receiver: string = this.address) {
+  async createRunesMintOrder(runeId: string, count: number, feeRate: number, receiver: string) {
     const body = JSON.stringify({
       runeId,
       count,
@@ -126,7 +148,7 @@ export class UniSat {
 
   async buy(nftType: string, auctionId: string, bidPrice: number, feeRate: number = 0) {
     if (!feeRate) {
-      const summary = await this.wallet.getFeeSummary();
+      const summary = await this.getWallet().getFeeSummary();
       // console.log(summary)
       feeRate = summary.list[1].feeRate;
       if (feeRate > this.maxFeeRate) {
@@ -136,23 +158,23 @@ export class UniSat {
 
     const order = await this.createBid(nftType, auctionId, bidPrice, feeRate);
     if (order) {
+      // console.log(order);
       const psbt = unicore.bitcoin.Psbt.fromHex(order.psbtBid);
-      const psbtSign = await this.wallet.signPsbt(psbt, null, true);
-      const txid = await this.confirmBid(nftType, auctionId, order.bidId, psbtSign.toHex());
-      return txid;
+      const toSignInputs = await this.getWallet().formatOptionsToSignInputs(order.psbtBid);
+      const psbtSign = await this.getWallet().signPsbt(psbt, toSignInputs, false);
+      const tx = await this.confirmBid(nftType, auctionId, order.bidId, psbtSign.toHex());
+      return tx;
     }
 
     return order;
-
   }
-
 
   async createBid(nftType: string, auctionId: string, bidPrice: number, feeRate: number) {
     const body = JSON.stringify({
       auctionId,
       bidPrice,
       address: this.address,
-      pubkey: this.wallet.getCurrentAccount().pubkey,
+      pubkey: this.getWallet().getCurrentAccount().pubkey,
       feeRate,
     });
 
@@ -164,7 +186,14 @@ export class UniSat {
     return res;
   }
 
-  async confirmBid(nftType: string, auctionId: string, bidId: string, psbtBid: string, psbtBid2: string = '', psbtSettle: string = '') {
+  async confirmBid(
+    nftType: string,
+    auctionId: string,
+    bidId: string,
+    psbtBid: string,
+    psbtBid2: string = '',
+    psbtSettle: string = '',
+  ) {
     const body = JSON.stringify({
       auctionId,
       bidId,
@@ -172,12 +201,32 @@ export class UniSat {
       psbtBid2,
       psbtSettle,
       fromBase64: false,
-      walletType: 'unisat'
+      walletType: 'unisat',
     });
 
     const res = await this.fetch(`/market-v4/${nftType}/auction/confirm_bid`, 'POST', body);
     if (res) {
       console.log(`confirm_bid`);
+      return res;
+    }
+    return res;
+  }
+
+  async runes() {
+    const body = JSON.stringify({});
+
+    const res = await this.fetch(`/market-v4/runes/auction/runes_types_many`, 'POST', body);
+    if (res) {
+      return res;
+    }
+    return res;
+  }
+
+  async runeStat(tick: string) {
+    const body = JSON.stringify({ tick });
+
+    const res = await this.fetch(`/market-v4/runes/auction/runes_statistic`, 'POST', body);
+    if (res) {
       return res;
     }
     return res;
@@ -203,7 +252,7 @@ export class UniSat {
   //     return false;
   //   }
 
-  //   const sig = await this.wallet.signBIP322Simple(message);
+  //   const sig = await this.getWallet().signBIP322Simple(message);
   //   // console.log(sig);
 
   //   if (!sig) {
@@ -372,7 +421,7 @@ export class UniSat {
   //     console.log('获取签名信息失败');
   //     return false;
   //   }
-  //   const sig = await this.wallet.signBIP322Simple(message);
+  //   const sig = await this.getWallet().signBIP322Simple(message);
   //   // console.log(sig);
 
   //   if (!sig) {
@@ -392,26 +441,26 @@ export class UniSat {
     return res;
   }
 
-  buildFiles(tick: string, amt: string, count: number) {
+  buildBrc20(tick: string, amt: string, count: number) {
     const files: FileInfo[] = [];
-    const filename = JSON.stringify({
+    const fileName = JSON.stringify({
       p: 'brc-20',
       op: 'mint',
       tick,
       amt,
     });
     // {"p":"brc-20","op":"mint","tick":"🪁","amt":"1000000"}
-    const t = 48;
+    const t = 500;
+    const base64 = Buffer.from(fileName).toString('base64');
+    const filename = fileName.length <= t
+                    ? fileName
+                    : '' .concat(fileName.substring(0, t / 2), '...')
+                         .concat(fileName.substring(fileName.length - t / 2, fileName.length))
+
     for (let index = 0; index < count; index++) {
-      const base64 = Buffer.from(filename).toString('base64');
       const element = {
         dataURL: `data:text/plain;charset=utf-8;base64,${base64}`,
-        filename:
-          filename.length <= t
-            ? filename
-            : ''
-                .concat(filename.substring(0, t / 2), '...')
-                .concat(filename.substring(filename.length - t / 2, filename.length)),
+        filename,
       };
       files.push(element);
     }
@@ -419,14 +468,20 @@ export class UniSat {
     return files;
   }
 
-  async mintInscribe(tick: string, amount: string, count: number, feeRate: number = 0) {
-    const files = this.buildFiles(tick, amount, count);
+  // async mintFiles(files, ) {
+    
+  // }
+
+  async mintBrc20(tick: string, amount: number, count: number, feeRate: number = 0) {
+    const files = this.buildBrc20(tick, amount.toString(), count);
     // console.log(files)
+    const wallet = this.getWallet();
 
     if (!feeRate) {
-      const summary = await this.wallet.getFeeSummary();
+      const summary = await wallet.getFeeSummary();
       // console.log(summary)
       feeRate = summary.list[1].feeRate;
+      console.log(`中优先级fee： ${feeRate}`)
       if (feeRate > this.maxFeeRate) {
         throw new Error(`gas 超过指定值（${feeRate}）`);
       }
@@ -439,7 +494,7 @@ export class UniSat {
         toAddress: order.payAddress,
         toAmount: order.amount,
         feeRate: order.feeRate,
-        enableRBF: false
+        enableRBF: false,
       });
       console.log(txId);
       return txId;
@@ -453,7 +508,7 @@ export class UniSat {
       files,
       receiver: this.address,
       feeRate,
-      outputValue: 330,
+      outputValue: 546,
       clientId: ''
         .concat(Math.random().toString(36).slice(-8))
         .concat(Math.random().toString(36).slice(-8)),
@@ -470,7 +525,7 @@ export class UniSat {
 
   async inscribeBRC20Transfer(tick: string, amount: string, feeRate: number = 0) {
     if (!feeRate) {
-      const summary = await this.wallet.getFeeSummary();
+      const summary = await this.getWallet().getFeeSummary();
       // console.log(summary)
       feeRate = summary.list[1].feeRate;
       if (feeRate > this.maxFeeRate) {
@@ -478,43 +533,45 @@ export class UniSat {
       }
     }
 
-    // const order = await this.wallet.inscribeBRC20Transfer(this.address, tick, amount, feeRate);
+    // const order = await this.getWallet().inscribeBRC20Transfer(this.address, tick, amount, feeRate);
     // if (order) {
-    //   const txId = await this.wallet.sendBitcoin(order.payAddress, order.totalFee, feeRate);
+    //   const txId = await this.getWallet().sendBitcoin(order.payAddress, order.totalFee, feeRate);
     //   console.log(txId);
     // }
   }
 
   async sendBitcoin({
-      toAddress,
-      toAmount,
-      feeRate,
-      enableRBF,
-      memo,
-      memos,
-      disableAutoAdjust
-    }: {
-      toAddress: string;
-      toAmount: number;
-      feeRate?: number;
-      enableRBF: boolean;
-      memo?: string;
-      memos?: string[];
-      disableAutoAdjust?: boolean;
-    }) {
-    const _utxos = await this.wallet.getBTCUtxos();
+    toAddress,
+    toAmount,
+    feeRate,
+    enableRBF,
+    memo,
+    memos,
+    disableAutoAdjust,
+  }: {
+    toAddress: string;
+    toAmount: number;
+    feeRate?: number;
+    enableRBF: boolean;
+    memo?: string;
+    memos?: string[];
+    disableAutoAdjust?: boolean;
+  }) {
+    const _utxos = await this.getWallet().getBTCUtxos();
 
-    const safeBalance = _utxos.filter((v) => v.inscriptions.length == 0).reduce((pre, cur) => pre + cur.satoshis, 0);
+    const safeBalance = _utxos
+      .filter((v) => v.inscriptions.length == 0)
+      .reduce((pre, cur) => pre + cur.satoshis, 0);
     if (safeBalance < toAmount) {
       throw new Error(
         `Insufficient balance. Non-Inscription balance(${uniutils.satoshisToAmount(
-          safeBalance
-        )} BTC) is lower than ${uniutils.satoshisToAmount(toAmount)} BTC `
+          safeBalance,
+        )} BTC) is lower than ${uniutils.satoshisToAmount(toAmount)} BTC `,
       );
     }
 
     if (!feeRate) {
-      const summary = await this.wallet.getFeeSummary();
+      const summary = await this.getWallet().getFeeSummary();
       // console.log(summary)
       feeRate = summary.list[1].feeRate;
       if (feeRate > this.maxFeeRate) {
@@ -524,28 +581,28 @@ export class UniSat {
     let psbtHex = '';
 
     if (safeBalance === toAmount && !disableAutoAdjust) {
-      psbtHex = await this.wallet.sendAllBTC({
+      psbtHex = await this.getWallet().sendAllBTC({
         to: toAddress,
         btcUtxos: _utxos,
         enableRBF,
-        feeRate
+        feeRate,
       });
     } else {
-      psbtHex = await this.wallet.sendBTC({
+      psbtHex = await this.getWallet().sendBTC({
         to: toAddress,
         amount: toAmount,
         btcUtxos: _utxos,
         enableRBF,
         feeRate,
         memo,
-        memos
+        memos,
       });
     }
 
     const psbt = unicore.bitcoin.Psbt.fromHex(psbtHex);
     const rawtx = psbt.extractTransaction().toHex();
-    
-    const txid = await this.wallet.pushTx(rawtx);
+
+    const txid = await this.getWallet().pushTx(rawtx);
 
     return txid;
   }
@@ -582,18 +639,19 @@ export class UniSat {
       // keepalive: true,
       body: body ? body : null,
       // @ts-ignore
-      agent
+      agent,
     });
     // const data = await res.json();
     // console.log(data)
     if (res.status == 200) {
       const data = await res.json();
-      // console.log(data)
+      // const data = await res.text();
+      // console.log(data);
       if (data.code == 0) {
         return data.data;
       }
       if (data.msg) {
-        throw new Error(data.msg);
+        throw new Error(`请求错误： ${data.msg}`);
       }
       console.log(data);
       return false;

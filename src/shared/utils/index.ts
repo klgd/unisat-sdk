@@ -6,7 +6,7 @@ import {
 // import { keyBy } from 'lodash';
 
 // import browser from '@/background/webapi/browser';
-import { AddressFlagType, CHAINS } from '../constant';
+import { AddressFlagType, CHAINS, CHAINS_MAP, ChainType, NETWORK_TYPES } from '../constant';
 
 
 // import BroadcastChannelMessage from './message/broadcastChannelMessage';
@@ -42,6 +42,15 @@ import { AddressFlagType, CHAINS } from '../constant';
 export const checkAddressFlag = (currentFlag: number, flag: AddressFlagType): boolean => {
   return Boolean(currentFlag & flag);
 };
+
+export function getChainInfo(chainType: ChainType) {
+  const chain = CHAINS_MAP[chainType];
+  return {
+    enum: chainType,
+    name: chain.label,
+    network: NETWORK_TYPES[chain.networkType].name
+  };
+}
 
 export function toPsbtNetwork(networkType: NetworkType) {
   if (networkType === NetworkType.MAINNET) {
