@@ -10,13 +10,20 @@ npm i @klgd/unisat-sdk
 ```js
 
 // Using ES6 modules with Babel or TypeScript
-import { Wallet, AddressType, NetworkType } from '@klgd/unisat-sdk';
+import { UniSat, Wallet, AddressType, NetworkType } from '@klgd/unisat-sdk';
 
 // Using CommonJS modules
-const { Wallet, AddressType, NetworkType } = require('@klgd/unisat-sdk');
+const { UniSat, Wallet, AddressType, NetworkType } = require('@klgd/unisat-sdk');
 
 const WIF = '';
-const wallet = new Wallet(WIF, AddressType.P2TR, NetworkType.MAINNET);
+
+const chainType = ChainType.BITCOIN_MAINNET;
+const wallet = new Wallet(WIF, AddressType.P2TR, chainType);
+const unisat = new UniSat(wallet, API_BASE_URL[chainType]);
+
+unisat.setMaxFeeRate(MAX_FEE); // 指定最大fee
+
+const tx = await unisat.mintBrc20(tick, amount, count);
 ```
 
 ## 设置代理
